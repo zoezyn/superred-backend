@@ -6,6 +6,7 @@ import requests
 import os
 import ollama
 from dotenv import load_dotenv
+import heapq  # Add this import at the top
 
 # Load environment variables
 load_dotenv()
@@ -122,6 +123,16 @@ def get_posts_from_subreddits(subreddits: List[str], search_limit: int = 30, sea
         try:
             # Get posts from subreddit
             subreddit = reddit.subreddit(subreddit_name)
+
+            # Get icon URL
+            icon_url = None
+            if hasattr(subreddit, 'community_icon') and subreddit.community_icon:
+                icon_url = subreddit.community_icon
+            elif hasattr(subreddit, 'icon_img') and subreddit.icon_img:
+                icon_url = subreddit.icon_img
+            print("icon_url1: ", icon_url)
+            
+            # Get posts from subreddit
             posts = subreddit.search(search_query, limit=search_limit)
             
             # Process each post
@@ -138,6 +149,7 @@ def get_posts_from_subreddits(subreddits: List[str], search_limit: int = 30, sea
                 # Add to results
                 result = {
                     'subreddit': subreddit_name,
+                    'subreddit_icon': icon_url,
                     'title': post.title,
                     'content': content,
                     'comments': comments,
@@ -155,6 +167,87 @@ def get_posts_from_subreddits(subreddits: List[str], search_limit: int = 30, sea
             print(f"Error processing r/{subreddit_name}: {str(e)}")
     
     return all_results
+
+
+def find_relevant_subreddits(query: str, limit: int = 20) -> List[Dict]:
+    """
+    Find subreddits relevant to a query using Reddit's API
+    
+    Args:
+        query: Search term to find relevant subreddits
+        limit: Maximum number of subreddits to return
+        
+    Returns:
+        List of subreddit information dictionaries
+    """
+    # Set up Reddit API
+    try:
+        reddit = setup_reddit()
+    except Exception as e:
+        print(f"Error setting up Reddit API: {str(e)}")
+        return []
+    
+    subreddits = []
+    
+    try:
+        # Search for subreddits
+        # results = reddit.subreddits.search(query, limit=limit*2)  # Get more results initially
+        results_by_name = reddit.subreddits.search_by_name(query)
+        
+        # Use a heap to maintain top N subreddits by subscriber count
+        top_subreddits = []  # This will be our min-heap
+        seen_names = set()  # To avoid duplicates
+        
+        # Process subreddits from both search methods
+        for subreddit in list(results_by_name):
+            # Skip if we've already seen this subreddit
+            # if subreddit.display_name in seen_names:
+            #     continue
+                
+            seen_names.add(subreddit.display_name)
+            
+            # Get subscriber count (default to 0 if not available)
+            subscribers = getattr(subreddit, 'subscribers', 0) or 0
+
+            # Get icon URL (community icon or default icon)
+            icon_url = None
+            if hasattr(subreddit, 'community_icon') and subreddit.community_icon:
+                icon_url = subreddit.community_icon
+            elif hasattr(subreddit, 'icon_img') and subreddit.icon_img:
+                icon_url = subreddit.icon_img
+
+            print("icon_url2: ", icon_url)
+                
+            
+            # Get basic information
+            subreddit_info = {
+                'name': subreddit.name,
+                'display_name': subreddit.display_name,
+                'description': subreddit.public_description if hasattr(subreddit, 'public_description') else None,
+                'subscribers': subscribers,
+                'url': f"https://www.reddit.com/r/{subreddit.display_name}",
+                'subreddit_icon': icon_url,
+            }
+            
+            # If we haven't reached the limit yet, just add to heap
+            if len(top_subreddits) < limit:
+                # We use negative subscribers because heapq is a min-heap
+                # and we want the largest values
+                heapq.heappush(top_subreddits, ((-subscribers), subreddit_info))
+            # Otherwise, replace the smallest item if this one is larger
+            elif subscribers > -top_subreddits[0][0]:
+                heapq.heappushpop(top_subreddits, ((-subscribers), subreddit_info))
+            
+            # Avoid rate limiting
+            time.sleep(0.1)
+        
+        # Extract the subreddit info in order (largest to smallest)
+        subreddits = [item[1] for item in sorted(top_subreddits)]
+            
+    except Exception as e:
+        print(f"Error searching for subreddits: {str(e)}")
+    
+    return subreddits
 
 # For direct testing
 if __name__ == "__main__":

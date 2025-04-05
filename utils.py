@@ -7,9 +7,12 @@ import ollama
 import os
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, validator
-
+from google import genai
+import json
 # Load environment variables
 load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 
 def categorize_posts(posts_data: List[Dict]) -> Dict:
     """
@@ -25,26 +28,36 @@ def categorize_posts(posts_data: List[Dict]) -> Dict:
     all_post_contents = [post['content'] for post in posts_data]
     
     # Skip categorization if there are not enough posts
-    if len(all_post_contents) < 2:
-        return {-1: posts_data}
+    if len(all_post_contents) < 5:  # Minimum threshold
+        print(f"Not enough posts ({len(all_post_contents)}) for topic modeling. Returning all posts in a single category.")
+        return {0: posts_data}  # Return all posts in a single category
     
-    # Initialize BERTopic
-    topic_model = BERTopic(
-        embedding_model="all-MiniLM-L6-v2",
-        min_topic_size=2,  # Minimum number of documents per topic
-    )
+    try:
+        # Initialize BERTopic with more forgiving parameters
+        topic_model = BERTopic(
+            embedding_model="all-MiniLM-L6-v2",
+            min_topic_size=2,  # Minimum number of documents per topic
+            # n_neighbors=min(15, max(2, len(all_post_contents) - 1)),  # Adjust based on dataset size
+            # n_components=min(5, max(2, len(all_post_contents) // 2)),  # Adjust based on dataset size
+            verbose=True
+        )
+        
+        # Fit the model and get topics
+        topics, probs = topic_model.fit_transform(all_post_contents)
+        
+        # Group posts by cluster
+        categorized_posts = {}
+        for i, cluster in enumerate(topics):
+            if cluster not in categorized_posts:
+                categorized_posts[cluster] = []
+            categorized_posts[cluster].append(posts_data[i])
+        
+        return categorized_posts
     
-    # Fit the model and get topics
-    topics, probs = topic_model.fit_transform(all_post_contents)
-    
-    # Group posts by cluster
-    categorized_posts = {}
-    for i, cluster in enumerate(topics):
-        if cluster not in categorized_posts:
-            categorized_posts[cluster] = []
-        categorized_posts[cluster].append(posts_data[i])
-    
-    return categorized_posts
+    except Exception as e:
+        print(f"Error in topic modeling: {str(e)}")
+        # Fallback: return all posts in a single category
+        return {0: posts_data}
 
 class CategoryResponse(BaseModel):
     category: str = Field(..., description="A category name that best describes these related issues")
@@ -86,22 +99,36 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
         {post_contents}
 
         You must respond in valid JSON format with exactly these fields:
-        {{
-          "category": "A category name that best describes these related issues",
-          "pain_points": "2-4 sentences summarizing the shared problems"
-        }}
+
+        category: A category name that best describes these related issues
+        pain_points: 2-4 sentences summarizing the shared problems
+
         Do not include any other text, explanations, or formatting in your response.
         There should be only one category and one pain point.
         """
         
         try:
-            response = ollama.generate(model=model, prompt=prompt)
-            llm_response = response['response'].strip()
+            # response = ollama.generate(model=model, prompt=prompt)
+            # llm_response = response['response'].strip()
+
+            # print("ollama_response: ", llm_response)
             
+            client = genai.Client(api_key=GEMINI_API_KEY)
+
+            llm_response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config={
+                    'response_mime_type': 'application/json',
+                    'response_schema': CategoryResponse,
+                },
+            )
+            print("llm_response: ", llm_response.text)
+
             # Try to parse as JSON first
             try:
-                import json
-                parsed_json = json.loads(llm_response)
+                
+                parsed_json = json.loads(llm_response.text)
                 category_model = CategoryResponse(**parsed_json)
             except (json.JSONDecodeError, ValueError):
                 # Fallback: try to extract category and pain points from text
