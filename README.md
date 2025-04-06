@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 4. Start the API server:
 ```bash
-python app.py
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at http://localhost:8000
