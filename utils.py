@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, validator
 from google import genai
 import json
+import requests 
+import json
 # Load environment variables
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -26,6 +28,8 @@ def categorize_posts(posts_data: List[Dict]) -> Dict:
     """
     # Extract content for topic modeling
     all_post_contents = [post['content'] for post in posts_data]
+
+    # print("all_post_contentsall_post_contents: ", all_post_contents)
     
     # Skip categorization if there are not enough posts
     if len(all_post_contents) < 5:  # Minimum threshold
@@ -112,23 +116,111 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
             # llm_response = response['response'].strip()
 
             # print("ollama_response: ", llm_response)
-            
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            ######
+            # client = genai.Client(api_key=GEMINI_API_KEY)
 
-            llm_response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config={
-                    'response_mime_type': 'application/json',
-                    'response_schema': CategoryResponse,
+            # llm_response = client.models.generate_content(
+            #     model="gemini-2.0-flash",
+            #     contents=prompt,
+            #     config={
+            #         'response_mime_type': 'application/json',
+            #         'response_schema': CategoryResponse,
+            #     },
+            # )
+            # print("llm_response: ", llm_response.text)
+            # Prepare the request data for Inferless
+            inferless_url = os.getenv("INFERLESS_URL")
+            inferless_token = os.getenv("INFERLESS_TOKEN")
+            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {inferless_token}"}
+
+            data = {
+            "inputs": [
+                {
+                    "name": "prompt",
+                    "shape": [
+                        1
+                    ],
+                    "data": [
+                        prompt
+                    ],
+                    "datatype": "BYTES"
                 },
-            )
-            print("llm_response: ", llm_response.text)
+                {
+                    "name": "temperature",
+                    "optional": True,
+                    "shape": [
+                        1
+                    ],
+                    "data": [
+                        0.7
+                    ],
+                    "datatype": "FP64"
+                },
+                {
+                    "name": "top_p",
+                    "optional": True,
+                    "shape": [
+                        1
+                    ],
+                    "data": [
+                        0.1
+                    ],
+                    "datatype": "FP64"
+                },
+                {
+                    "name": "repetition_penalty",
+                    "optional": True,
+                    "shape": [
+                        1
+                    ],
+                    "data": [
+                        1.18
+                    ],
+                    "datatype": "FP64"
+                },
+                {
+                    "name": "top_k",
+                    "optional": True,
+                    "shape": [
+                        1
+                    ],
+                    "data": [
+                        40
+                    ],
+                    "datatype": "INT32"
+                },
+                {
+                    "name": "max_tokens",
+                    "optional": True,
+                    "shape": [
+                        1
+                    ],
+                    "data": [
+                        100
+                    ],
+                    "datatype": "INT32"
+                },
+                {
+                    "name": "do_sample",
+                    "optional": True,
+                    "shape": [
+                        1
+                    ],
+                    "data": [
+                        False
+                    ],
+                    "datatype": "BOOL"
+                }
+            ]
+        }
+            response = requests.post(inferless_url, headers=headers, data=json.dumps(data))
+            llm_response = response.json()['outputs'][0]['data'][0]#.decode('utf-8')
+            print("llm_response: ", llm_response)
 
             # Try to parse as JSON first
             try:
                 
-                parsed_json = json.loads(llm_response.text)
+                parsed_json = json.loads(llm_response)
                 category_model = CategoryResponse(**parsed_json)
             except (json.JSONDecodeError, ValueError):
                 # Fallback: try to extract category and pain points from text
