@@ -7,6 +7,7 @@ import os
 import ollama
 from dotenv import load_dotenv
 import heapq  # Add this import at the top
+from apify_client import ApifyClient
 
 # Load environment variables
 load_dotenv()
@@ -94,7 +95,7 @@ def get_reddit_posts_praw(reddit, subreddit_name, limit=20, search_query="compla
 #         return f"Error: {str(e)}"
 
 # Main function to fetch posts from subreddits
-def get_posts_from_subreddits(subreddits: List[str], search_limit: int = 30, search_query: str = "complain OR issue OR problem") -> List[Dict[str, Any]]:
+def get_posts_from_subreddits1(subreddits: List[str], search_limit: int = 30, search_query: str = "complain OR issue OR problem") -> List[Dict[str, Any]]:
 # def analyze_subreddit_pain_points(subreddits, posts_per_subreddit=5):
     """
     Fetch posts from multiple subreddits using PRAW
@@ -168,6 +169,82 @@ def get_posts_from_subreddits(subreddits: List[str], search_limit: int = 30, sea
     
     return all_results
 
+
+## NEW
+
+def get_posts_from_subreddits(subreddits: List[str], search_limit: int = 5, search_query: str = ["complain", "issue", "problem"]) -> List[Dict[str, Any]]:
+# def analyze_subreddit_pain_points(subreddits, posts_per_subreddit=5):
+    """
+    Fetch posts from multiple subreddits using PRAW
+    
+    Args:
+        subreddits: List of subreddit names
+        search_limit: Maximum number of posts per subreddit
+        search_query: Query to search for in subreddits
+        
+    Returns:
+        List of post dictionaries
+    """
+    all_results = []
+    apify_api_key = os.getenv("APIFY_API_KEY")
+    print("clientclientclient: ", apify_api_key)
+    client = ApifyClient(apify_api_key)
+
+    print("clientclientclient2: ", client)
+
+    # for subreddit_name in subreddits:
+    run_input = {
+        "searchList": search_query,
+        "subRedditList": subreddits,
+        "resultsLimit": 20,
+        "sortBy": "new",
+        "proxy": {
+            "useApifyProxy": True,
+            "apifyProxyGroups": ["RESIDENTIAL"],
+        },
+    }
+    print("run_inputrun_inputrun_input: ", run_input)
+    icon_url = None
+
+    # Run the Actor and wait for it to finish
+    run = client.actor("comchat/reddit-api-scraper").call(run_input=run_input)
+    count = 0
+    for post in client.dataset(run["defaultDatasetId"]).iterate_items():
+        # print("postpostpost: ")
+        # print(post)
+        # content = post.selftext if hasattr(post, 'selftext') else '[No content]'
+        # print("contentcontentcontent: ", post["selftext"])
+        # Get comments (limited to avoid rate limiting)
+        comments = []
+        # post.comments.replace_more(limit=0)  # Only get top-level comments
+        # for comment in list(post.comments)[:3]:  # Limit to first 3 comments
+        #     comments.append(comment.body)
+        try:
+            content = post["selftext"]
+            print("selftextselftext", "YES")
+        except:
+            # content = '[No content]'
+            print("selftextselftext", "NO")
+            print("POSTWITHOUTCONTENT: ", post)
+            continue
+        
+        # Add to results
+        result = {
+            'subreddit': post["subreddit"],
+            # 'subreddit_icon': icon_url,
+            # 'title': post["title"] if post["title"] else None,
+            'content': content,
+            # 'comments': comments,
+            'url': f"https://www.reddit.com{post['permalink']}",
+            # 'score': None,
+            # 'num_comments': None,
+        }
+        count += 1
+        print("countcountcount: ", count)
+        # print("resultresultresult: ", result)
+        all_results.append(result)
+
+    return all_results
 
 def find_relevant_subreddits(query: str, limit: int = 20) -> List[Dict]:
     """
