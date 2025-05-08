@@ -57,7 +57,7 @@ async def search_subreddits(request: SubredditSearchRequest):
     """
     try:
         # Get subreddits matching the query
-        subreddits = find_relevant_subreddits(
+        subreddits = await find_relevant_subreddits(
             query=request.query,
             limit=request.limit
         )
@@ -77,7 +77,7 @@ async def analyze_subreddits(request: RedditAnalysisRequest):
     """
     try:
         # Get posts
-        results = get_posts_from_subreddits(
+        results = await get_posts_from_subreddits(
             subreddits=request.subreddits,
             search_limit=request.search_limit
         )
@@ -97,3 +97,7 @@ async def analyze_subreddits(request: RedditAnalysisRequest):
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

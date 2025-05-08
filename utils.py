@@ -9,10 +9,24 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, validator
 from google import genai
 import json
+from functools import lru_cache
+
 # Load environment variables
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+# Cache for models
+@lru_cache(maxsize=1)
+def get_bertopic_model():
+    return BERTopic(
+        embedding_model="all-MiniLM-L6-v2",
+        min_topic_size=2,
+        verbose=True
+    )
+
+@lru_cache(maxsize=1)
+def get_sentence_transformer():
+    return SentenceTransformer('all-MiniLM-L6-v2')
 
 def categorize_posts(posts_data: List[Dict]) -> Dict:
     """
@@ -26,6 +40,7 @@ def categorize_posts(posts_data: List[Dict]) -> Dict:
     """
     # Extract content for topic modeling
     all_post_contents = [post['content'] for post in posts_data]
+    print("len(all_post_contents): ", len(all_post_contents))
     
     # Skip categorization if there are not enough posts
     if len(all_post_contents) < 5:  # Minimum threshold
@@ -33,24 +48,38 @@ def categorize_posts(posts_data: List[Dict]) -> Dict:
         return {0: posts_data}  # Return all posts in a single category
     
     try:
-        # Initialize BERTopic with more forgiving parameters
-        topic_model = BERTopic(
-            embedding_model="all-MiniLM-L6-v2",
-            min_topic_size=2,  # Minimum number of documents per topic
-            # n_neighbors=min(15, max(2, len(all_post_contents) - 1)),  # Adjust based on dataset size
-            # n_components=min(5, max(2, len(all_post_contents) // 2)),  # Adjust based on dataset size
-            verbose=True
-        )
+        # Use cached model
+        topic_model = get_bertopic_model()
         
-        # Fit the model and get topics
+        # Process in batches if there are many posts
+        batch_size = 100
+        all_topics = []
+        all_probs = []
+        
+        # for i in range(0, len(all_post_contents), batch_size):
+        #     batch = all_post_contents[i:i + batch_size]
+        #     batch_topics, batch_probs = topic_model.fit_transform(batch)
+        #     all_topics.extend(batch_topics)
+        #     if batch_probs is not None:
+        #         all_probs.extend(batch_probs)
+            
+        #     # Clear batch data
+        #     del batch
+        #     del batch_topics
+        #     del batch_probs
+        
         topics, probs = topic_model.fit_transform(all_post_contents)
-        
         # Group posts by cluster
         categorized_posts = {}
         for i, cluster in enumerate(topics):
             if cluster not in categorized_posts:
                 categorized_posts[cluster] = []
             categorized_posts[cluster].append(posts_data[i])
+        
+        # # Clear large data structures
+        # del all_post_contents
+        # del all_topics
+        # del all_probs
         
         return categorized_posts
     
@@ -89,32 +118,29 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
         if cluster == -1:
             continue
             
-        # Combine all post contents in this cluster
-        post_contents = "\n".join([post['content'] for post in posts])
-        
-        prompt = f"""
-        Based on these related posts, identify the common pain point or problem these users are experiencing.
-
-        Posts:
-        {post_contents}
-
-        You must respond in valid JSON format with exactly these fields:
-
-        category: A category name that best describes these related issues
-        pain_points: 2-4 sentences summarizing the shared problems
-
-        Do not include any other text, explanations, or formatting in your response.
-        There should be only one category and one pain point.
-        """
-        
         try:
-            # response = ollama.generate(model=model, prompt=prompt)
-            # llm_response = response['response'].strip()
+            # Process one cluster at a time
+            post_contents = "\n".join([post['content'] for post in posts])
+            
+            prompt = f"""
+            Based on these related posts, identify the common pain point or problem these users are experiencing.
 
-            # print("ollama_response: ", llm_response)
+            Posts:
+            {post_contents}
+
+            You must respond in valid JSON format with exactly these fields:
+
+            category: A category name that best describes these related issues
+            pain_points: 2-4 sentences summarizing the shared problems
+
+            Do not include any other text, explanations, or formatting in your response.
+            There should be only one category and one pain point.
+            """
+            
+            # Clear post contents after creating prompt
+            del post_contents
             
             client = genai.Client(api_key=GEMINI_API_KEY)
-
             llm_response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=prompt,
@@ -123,15 +149,11 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
                     'response_schema': CategoryResponse,
                 },
             )
-            print("llm_response: ", llm_response.text)
 
-            # Try to parse as JSON first
             try:
-                
                 parsed_json = json.loads(llm_response.text)
                 category_model = CategoryResponse(**parsed_json)
             except (json.JSONDecodeError, ValueError):
-                # Fallback: try to extract category and pain points from text
                 category = "Uncategorized"
                 pain_points = "No clear pain points identified."
                 
@@ -153,8 +175,14 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
                 'pain_points': category_model.pain_points,
                 'posts': posts,
             }
+            
+            # Clear response data
+            del llm_response
+            del category_model
+            
         except Exception as e:
             print(f"Error summarizing cluster {cluster}: {str(e)}")
+            continue
     
     return categories
 
