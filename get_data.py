@@ -65,44 +65,49 @@ async def get_posts_from_subreddits(subreddits: List[str], search_limit: int = 3
     try:
         reddit = await setup_reddit()
         print("Successfully connected to Reddit API")
+
+        for subreddit_name in subreddits:
+            print(f"Getting posts from r/{subreddit_name}...")
+            
+            try:
+                # # Get subreddit
+                # subreddit = await reddit.subreddit(subreddit_name)
+
+                # # Get icon URL
+                # icon_url = None
+                # if hasattr(subreddit, 'community_icon') and subreddit.community_icon:
+                #     icon_url = subreddit.community_icon
+                # elif hasattr(subreddit, 'icon_img') and subreddit.icon_img:
+                #     icon_url = subreddit.icon_img
+                # print("icon_url1: ", icon_url)
+                
+                # Get posts from subreddit
+                posts = await get_reddit_posts_async(reddit, subreddit_name, search_limit, search_query)
+                
+                # Process posts
+                for post in posts:
+                    post_data = {
+                        'subreddit': subreddit_name,
+                        # 'subreddit_icon': icon_url,
+                        'title': post.title,
+                        'content': post.selftext,
+                        'url': post.url,
+                        'score': post.score,
+                        'num_comments': post.num_comments
+                    }
+                    all_results.append(post_data)
+                    
+            
+            except Exception as e:
+                print(f"Error processing subreddit {subreddit_name}: {str(e)}")
+                continue
+
     except Exception as e:
         print(f"Error setting up Reddit API: {str(e)}")
-        return []
+        # return []
     
-    for subreddit_name in subreddits:
-        print(f"Getting posts from r/{subreddit_name}...")
-        
-        try:
-            # # Get subreddit
-            # subreddit = await reddit.subreddit(subreddit_name)
-
-            # # Get icon URL
-            # icon_url = None
-            # if hasattr(subreddit, 'community_icon') and subreddit.community_icon:
-            #     icon_url = subreddit.community_icon
-            # elif hasattr(subreddit, 'icon_img') and subreddit.icon_img:
-            #     icon_url = subreddit.icon_img
-            # print("icon_url1: ", icon_url)
-            
-            # Get posts from subreddit
-            posts = await get_reddit_posts_async(reddit, subreddit_name, search_limit, search_query)
-            
-            # Process posts
-            for post in posts:
-                post_data = {
-                    'subreddit': subreddit_name,
-                    # 'subreddit_icon': icon_url,
-                    'title': post.title,
-                    'content': post.selftext,
-                    'url': post.url,
-                    'score': post.score,
-                    'num_comments': post.num_comments
-                }
-                all_results.append(post_data)
-                
-        except Exception as e:
-            print(f"Error processing subreddit {subreddit_name}: {str(e)}")
-            continue
+    finally:
+        await reddit.close()  # Ensure client is closed
     
     return all_results
 
@@ -178,6 +183,9 @@ async def find_relevant_subreddits(query: str, limit: int = 20) -> List[Dict]:
         
     except Exception as e:
         print(f"Error searching subreddits: {str(e)}")
+    
+    finally:
+        await reddit.close()  # Ensure client is closed
     
     return subreddits
 
