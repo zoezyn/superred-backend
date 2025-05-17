@@ -109,7 +109,8 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
         Dict of categories with summaries keyed by cluster ID
     """
     # Get model name from environment or use default
-    model = os.getenv("LLM_MODEL", "qwen2.5:7b")
+    # model = os.getenv("LLM_MODEL", "qwen2.5:7b")
+    
     
     # Summarize each category
     categories = {}
@@ -121,6 +122,9 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
         try:
             # Process one cluster at a time
             post_contents = "\n".join([post['content'] for post in posts])
+
+            print("Number of words: ", len(post_contents.split(' ')))
+
             
             prompt = f"""
             Based on these related posts, identify the common pain point or problem these users are experiencing.
@@ -135,6 +139,8 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
 
             Do not include any other text, explanations, or formatting in your response.
             There should be only one category and one pain point.
+
+            Make it short and concise.
             """
             
             # Clear post contents after creating prompt
@@ -142,7 +148,7 @@ def summarize_pain_points(categorized_posts: Dict) -> Dict:
             
             client = genai.Client(api_key=GEMINI_API_KEY)
             llm_response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.0-flash-lite",
                 contents=prompt,
                 config={
                     'response_mime_type': 'application/json',

@@ -26,7 +26,7 @@ async def setup_reddit() -> asyncpraw.Reddit:
     return reddit
 
 # Function to get posts from a subreddit using AsyncPRAW
-async def get_reddit_posts_async(reddit, subreddit_name, limit=20, search_query="complain OR issue OR problem") -> List[asyncpraw.models.Submission]:
+async def get_reddit_posts_async(reddit, subreddit_name, limit=20, search_query="complain OR complaint OR issue OR problem OR frustration OR annoying OR terrible OR awful OR horrible OR worst OR sucks OR hate OR disappointed OR upset OR angry OR rant") -> List[asyncpraw.models.Submission]:
     """
     Fetch posts from a subreddit using AsyncPRAW
     
