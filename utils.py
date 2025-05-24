@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, validator
 from google import genai
 import json
 from functools import lru_cache
+from umap import UMAP
+from hdbscan import HDBSCAN
 
 # Load environment variables
 load_dotenv()
@@ -18,10 +20,14 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Cache for models
 @lru_cache(maxsize=1)
 def get_bertopic_model():
+    umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.0, metric='cosine')
+    hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
+
     return BERTopic(
         embedding_model="all-MiniLM-L6-v2",
         min_topic_size=2,
-        verbose=True
+        verbose=True,
+        # umap_model=umap_model
     )
 
 @lru_cache(maxsize=1)
@@ -52,9 +58,9 @@ def categorize_posts(posts_data: List[Dict]) -> Dict:
         topic_model = get_bertopic_model()
         
         # Process in batches if there are many posts
-        batch_size = 100
-        all_topics = []
-        all_probs = []
+        # batch_size = 100
+        # all_topics = []
+        # all_probs = []
         
         # for i in range(0, len(all_post_contents), batch_size):
         #     batch = all_post_contents[i:i + batch_size]
