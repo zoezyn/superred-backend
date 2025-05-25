@@ -20,14 +20,30 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Cache for models
 @lru_cache(maxsize=1)
 def get_bertopic_model():
-    umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.0, metric='cosine')
-    hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
+    # Configure UMAP - reduce n_neighbors for more local structure
+    umap_model = UMAP(
+        n_neighbors=10,  # Reduced from 15 to capture more local structure
+        n_components=5,
+        min_dist=0.1,  # Increased from 0.0 to spread points more
+        metric='cosine'
+    )
+    
+    # Configure HDBSCAN - adjust parameters for more balanced clusters
+    hdbscan_model = HDBSCAN(
+        min_cluster_size=10,  # Reduced from 15 to allow smaller clusters
+        min_samples=5,  # Added to reduce noise points
+        metric='euclidean',
+        cluster_selection_method='eom',
+        prediction_data=True
+    )
 
     return BERTopic(
         embedding_model="all-MiniLM-L6-v2",
-        min_topic_size=2,
+        min_topic_size=4,  # Increased from 2 to prevent tiny clusters
+        n_gram_range=(1, 2),  # Added to capture better topic representations
         verbose=True,
-        # umap_model=umap_model
+        umap_model=umap_model,  # Uncommented to use our custom UMAP
+        hdbscan_model=hdbscan_model  # Added custom HDBSCAN
     )
 
 @lru_cache(maxsize=1)
