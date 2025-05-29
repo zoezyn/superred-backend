@@ -55,7 +55,7 @@ async def get_reddit_posts_async(reddit, subreddit_name, limit=20, search_query=
     subreddit = await reddit.subreddit(subreddit_name)
     posts = []
     # TODO: whether to use relevance or hot
-    async for post in subreddit.search(search_query, limit=limit, sort="hot", time_filter="all"):
+    async for post in subreddit.search(search_query, limit=limit, sort="relevance", time_filter="all"):
         posts.append(post)
     return posts
 
